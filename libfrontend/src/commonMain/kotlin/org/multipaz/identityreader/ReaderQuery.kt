@@ -1,9 +1,5 @@
 package org.multipaz.identityreader
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Numbers
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.ui.graphics.vector.ImageVector
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.cbor.Cbor
 import org.multipaz.crypto.AsymmetricKey
@@ -17,19 +13,15 @@ import org.multipaz.util.Logger
 private const val TAG = "ReaderQuery"
 
 enum class ReaderQuery(
-    val icon: ImageVector,
     val displayName: String,
 ) {
     AGE_OVER_18(
-        icon = Icons.Filled.Numbers,
         displayName = "Age Over 18",
     ),
     AGE_OVER_21(
-        icon = Icons.Filled.Numbers,
         displayName = "Age Over 21",
     ),
     IDENTIFICATION(
-        icon = Icons.Filled.Person,
         displayName = "Identification",
     ),
 

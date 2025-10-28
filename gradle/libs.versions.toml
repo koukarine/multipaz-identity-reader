@@ -28,6 +28,8 @@ androidx-credentials = "1.5.0"
 play-services-auth = "21.4.0"
 identity-googleid = "1.1.1"
 identity-google-api-client = "2.8.0"
+skie = "0.10.5"
+monitor = "1.8.0"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -64,6 +66,7 @@ androidx-credentials = { module = "androidx.credentials:credentials", version.re
 play-services-auth = {module = "com.google.android.gms:play-services-auth", version.ref = "play-services-auth" }
 identity-googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "identity-googleid" }
 identity-google-api-client = { module = "com.google.api-client:google-api-client", version.ref = "identity-google-api-client" }
+androidx-monitor = { group = "androidx.test", name = "monitor", version.ref = "monitor" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
@@ -75,3 +78,4 @@ ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 buildconfig = { id = "com.github.gmazzo.buildconfig", version.ref = "buildconfig" }
+skie = { id = "co.touchlab.skie", version.ref = "skie" }

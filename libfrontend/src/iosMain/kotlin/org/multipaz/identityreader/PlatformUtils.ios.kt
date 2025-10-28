@@ -5,14 +5,14 @@ import io.ktor.client.engine.darwin.Darwin
 import platform.UIKit.UIDevice
 import platform.posix.exit
 
-class IOSPlatform: Platform {
+class IOSPlatformUtils: PlatformUtils {
     override val name: String = UIDevice.currentDevice.systemName() + " " + UIDevice.currentDevice.systemVersion
+
+    override val httpClientEngineFactory: HttpClientEngineFactory<*> = Darwin
 
     override fun exitApp() {
         exit(0)
     }
 }
 
-actual fun getPlatform(): Platform = IOSPlatform()
-
-actual fun platformHttpClientEngineFactory(): HttpClientEngineFactory<*> = Darwin
+actual fun getPlatformUtils(): PlatformUtils = IOSPlatformUtils()

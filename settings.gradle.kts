@@ -31,6 +31,7 @@ dependencyResolutionManagement {
     }
 }
 
+include(":libfrontend")
 include(":libbackend")
 include(":composeApp")
 include(":backend")

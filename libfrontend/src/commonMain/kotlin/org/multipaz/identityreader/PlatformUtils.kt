@@ -2,12 +2,12 @@ package org.multipaz.identityreader
 
 import io.ktor.client.engine.HttpClientEngineFactory
 
-interface Platform {
+interface PlatformUtils {
     val name: String
+
+    val httpClientEngineFactory: HttpClientEngineFactory<*>
 
     fun exitApp()
 }
 
-expect fun getPlatform(): Platform
-
-expect fun platformHttpClientEngineFactory(): HttpClientEngineFactory<*>
+expect fun getPlatformUtils(): PlatformUtils

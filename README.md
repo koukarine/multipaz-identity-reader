@@ -1,7 +1,8 @@
-This is a Compose Multiplatform project targeting Android, iOS.
-
 This is a ISO/IEC 18013-5:2021 proximity reader for requesting credentials built using
 the Multipaz SDK. It includes a backend component for certifying reader authentication keys.
+
+This project contains a Compose Multiplatform project targeting Android, iOS in `composeApp`,
+and `iosApp` directories. The `IdentityReader` directory contains a SwiftUI app.
 
 Learn more about [Multipaz](https://github.com/openwallet-foundation-labs/identity-credential)…
 

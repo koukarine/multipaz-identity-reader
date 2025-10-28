@@ -1,0 +1,350 @@
+From bb16ad09c55e1aac4559cb4035ac1f4e4b61d777 Mon Sep 17 00:00:00 2001
+From: David Zeuthen <zeuthen@google.com>
+Date: Fri, 26 Sep 2025 16:46:13 -0400
+Subject: [PATCH] Update to Multipaz 0.94.0.
+
+Test: Manually tested.
+
+Signed-off-by: David Zeuthen <zeuthen@google.com>
+---
+ .../kotlin/org/multipaz/identityreader/App.kt | 18 +++--
+ .../identityreader/DeveloperSettingsScreen.kt | 24 +++++++
+ .../multipaz/identityreader/ReaderModel.kt    | 14 ++--
+ .../multipaz/identityreader/ReaderQuery.kt    | 65 +++++++++----------
+ .../multipaz/identityreader/SettingsModel.kt  |  2 +
+ .../multipaz/identityreader/StartScreen.kt    | 29 ++++-----
+ gradle/libs.versions.toml                     |  2 +-
+ 7 files changed, 91 insertions(+), 63 deletions(-)
+
+diff --git a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/App.kt b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/App.kt
+index 277fed5..f2d9118 100644
+--- a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/App.kt
++++ b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/App.kt
+@@ -74,10 +74,16 @@ class App(
+     private lateinit var readerBackendClient: ReaderBackendClient
+ 
+     private fun getMdocTransportOptionsForNfcEngagement() =
+-        MdocTransportOptions(bleUseL2CAP = settingsModel.bleL2capEnabled.value)
++        MdocTransportOptions(
++            bleUseL2CAP = settingsModel.bleL2capEnabled.value,
++            bleUseL2CAPInEngagement = settingsModel.bleL2capInEngagementEnabled.value
++        )
+ 
+     private fun getMdocTransportOptionsForQrEngagement() =
+-        MdocTransportOptions(bleUseL2CAP = settingsModel.bleL2capEnabled.value)
++        MdocTransportOptions(
++            bleUseL2CAP = settingsModel.bleL2capEnabled.value,
++            bleUseL2CAPInEngagement = settingsModel.bleL2capInEngagementEnabled.value
++        )
+ 
+     private val initLock = Mutex()
+     private var initialized = false
+@@ -269,12 +275,12 @@ class App(
+                         onScanQrClicked = {
+                             navController.navigate(route = ScanQrDestination.route)
+                         },
+-                        onNfcHandover = { transport, encodedDeviceEngagement, handover, updateMessage ->
++                        onNfcHandover = { scanResult ->
+                             readerModel.reset()
+                             readerModel.setConnectionEndpoint(
+-                                encodedDeviceEngagement = encodedDeviceEngagement,
+-                                handover = handover,
+-                                existingTransport = transport
++                                encodedDeviceEngagement = scanResult.encodedDeviceEngagement,
++                                handover = scanResult.handover,
++                                existingTransport = scanResult.transport
+                             )
+                             val readerQuery = ReaderQuery.valueOf(settingsModel.selectedQueryName.value)
+                             readerModel.setDeviceRequest(
+diff --git a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/DeveloperSettingsScreen.kt b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/DeveloperSettingsScreen.kt
+index 3594310..79c6591 100644
+--- a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/DeveloperSettingsScreen.kt
++++ b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/DeveloperSettingsScreen.kt
+@@ -85,6 +85,30 @@ information
+                         )
+                     }
+                 }
++                entries.add {
++                    Row(
++                        horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = Alignment.Start),
++                        verticalAlignment = Alignment.CenterVertically
++                    ) {
++                        Icon(
++                            modifier = Modifier.size(32.dp),
++                            imageVector = Icons.Outlined.Bluetooth,
++                            contentDescription = null
++                        )
++                        EntryItem(
++                            modifier = Modifier.weight(1.0f),
++                            key = "Use L2CAP in engagement",
++                            valueText = "If enabled, L2CAP will be enabled for Bluetooth Low Energy connections " +
++                                    "but only during device engagement"
++                        )
++                        Checkbox(
++                            checked = settingsModel.bleL2capInEngagementEnabled.collectAsState().value,
++                            onCheckedChange = { value ->
++                                settingsModel.bleL2capInEngagementEnabled.value = value
++                            },
++                        )
++                    }
++                }
+ 
+                 entries.add {
+                     Row(
+diff --git a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderModel.kt b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderModel.kt
+index efa1e66..3aef7a7 100644
+--- a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderModel.kt
++++ b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderModel.kt
+@@ -17,7 +17,7 @@ import org.multipaz.cbor.buildCborArray
+ import org.multipaz.crypto.Crypto
+ import org.multipaz.crypto.EcPrivateKey
+ import org.multipaz.mdoc.connectionmethod.MdocConnectionMethod
+-import org.multipaz.mdoc.engagement.EngagementParser
++import org.multipaz.mdoc.engagement.DeviceEngagement
+ import org.multipaz.mdoc.role.MdocRole
+ import org.multipaz.mdoc.sessionencryption.SessionEncryption
+ import org.multipaz.mdoc.transport.MdocTransport
+@@ -104,7 +104,7 @@ class ReaderModel {
+             return _encodedSessionTranscript!!
+         }
+ 
+-    private var deviceEngagement: EngagementParser.Engagement? = null
++    private var deviceEngagement: DeviceEngagement? = null
+     private var _eReaderKey: EcPrivateKey? = null
+     val eReaderKey: EcPrivateKey
+         get() {
+@@ -149,8 +149,10 @@ class ReaderModel {
+         this.existingTransport = existingTransport
+         _state.value = State.WAITING_FOR_DEVICE_REQUEST
+ 
+-        deviceEngagement = EngagementParser(encodedDeviceEngagement.toByteArray()).parse()
+-        _eReaderKey = Crypto.createEcPrivateKey(deviceEngagement!!.eSenderKey.curve)
++        deviceEngagement = DeviceEngagement.fromDataItem(
++            Cbor.decode(encodedDeviceEngagement.toByteArray())
++        )
++        _eReaderKey = Crypto.createEcPrivateKey(deviceEngagement!!.eDeviceKey.curve)
+         val encodedEReaderKey = Cbor.encode(_eReaderKey!!.publicKey.toCoseKey().toDataItem())
+         _encodedSessionTranscript = ByteString(
+             Cbor.encode(
+@@ -260,14 +262,14 @@ class ReaderModel {
+         val sessionEncryption = SessionEncryption(
+             MdocRole.MDOC_READER,
+             eReaderKey,
+-            deviceEngagement!!.eSenderKey,
++            deviceEngagement!!.eDeviceKey,
+             encodedSessionTranscript.toByteArray(),
+         )
+ 
+         println("OK, with transport: $transport")
+         val connectionMethod = transport.connectionMethod
+         try {
+-            transport.open(deviceEngagement!!.eSenderKey)
++            transport.open(deviceEngagement!!.eDeviceKey)
+             transport.sendMessage(
+                 sessionEncryption.encryptMessage(
+                     messagePlaintext = encodedDeviceRequest!!.toByteArray(),
+diff --git a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderQuery.kt b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderQuery.kt
+index 04f734b..cd353bd 100644
+--- a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderQuery.kt
++++ b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/ReaderQuery.kt
+@@ -5,11 +5,11 @@ import androidx.compose.material.icons.filled.Numbers
+ import androidx.compose.material.icons.filled.Person
+ import androidx.compose.ui.graphics.vector.ImageVector
+ import kotlinx.io.bytestring.ByteString
+-import org.multipaz.crypto.Algorithm
++import org.multipaz.cbor.Cbor
+ import org.multipaz.crypto.EcPrivateKey
+ import org.multipaz.crypto.X509CertChain
+ import org.multipaz.documenttype.knowntypes.DrivingLicense
+-import org.multipaz.mdoc.request.DeviceRequestGenerator
++import org.multipaz.mdoc.request.buildDeviceRequestSuspend
+ import org.multipaz.securearea.SecureArea
+ import org.multipaz.util.Logger
+ 
+@@ -150,38 +150,37 @@ suspend fun generateEncodedDeviceRequest(
+     val docType = DrivingLicense.MDL_DOCTYPE
+ 
+     // TODO: for now we're only requesting an mDL, in the future we might request many different doctypes
+-
+-    val deviceRequestGenerator = DeviceRequestGenerator(encodedSessionTranscript)
+-    if (readerKey != null) {
+-        deviceRequestGenerator.addDocumentRequest(
+-            docType = docType,
+-            itemsToRequest = itemsToRequest,
+-            requestInfo = null,
+-            readerKey = readerKey,
+-            signatureAlgorithm = readerKey.curve.defaultSigningAlgorithmFullySpecified,
+-            readerKeyCertificateChain = readerKeyCertification,
+-        )
+-    } else if (readerKeyAlias != null) {
+-        deviceRequestGenerator.addDocumentRequest(
+-            docType = docType,
+-            itemsToRequest = itemsToRequest,
+-            requestInfo = null,
+-            readerKeySecureArea = readerKeySecureArea!!,
+-            readerKeyAlias = readerKeyAlias,
+-            readerKeyCertificateChain = readerKeyCertification!!,
+-            keyUnlockData = null
+-        )
+-    } else {
+-        deviceRequestGenerator.addDocumentRequest(
+-            docType = docType,
+-            itemsToRequest = itemsToRequest,
+-            requestInfo = null,
+-            readerKey = null,
+-            signatureAlgorithm = Algorithm.UNSET,
+-            readerKeyCertificateChain = null,
+-        )
++    val deviceRequest = buildDeviceRequestSuspend(
++        sessionTranscript = Cbor.decode(encodedSessionTranscript),
++    ) {
++        if (readerKey != null) {
++            addDocRequest(
++                docType = docType,
++                nameSpaces = itemsToRequest,
++                docRequestInfo = null,
++                readerKey = readerKey,
++                signatureAlgorithm = readerKey.curve.defaultSigningAlgorithmFullySpecified,
++                readerKeyCertificateChain = readerKeyCertification,
++            )
++        } else if (readerKeyAlias != null) {
++            addDocRequest(
++                docType = docType,
++                nameSpaces = itemsToRequest,
++                docRequestInfo = null,
++                readerKeySecureArea = readerKeySecureArea!!,
++                readerKeyAlias = readerKeyAlias,
++                readerKeyCertificateChain = readerKeyCertification!!,
++                keyUnlockData = null
++            )
++        } else {
++            addDocRequest(
++                docType = docType,
++                nameSpaces = itemsToRequest,
++                docRequestInfo = null
++            )
++        }
+     }
+-    return deviceRequestGenerator.generate()
++    return Cbor.encode(deviceRequest.toDataItem())
+ }
+ 
+ 
+diff --git a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/SettingsModel.kt b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/SettingsModel.kt
+index 353024f..f84aa60 100644
+--- a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/SettingsModel.kt
++++ b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/SettingsModel.kt
+@@ -148,6 +148,7 @@ class SettingsModel private constructor(
+         bind(devMode, "devMode", false)
+         // L2CAP is off by default for now because Apple Wallet's L2CAP implementation is buggy.
+         bind(bleL2capEnabled, "bleL2capEnabled", false)
++        bind(bleL2capInEngagementEnabled, "bleL2capInEngagementEnabled", true)
+     }
+ 
+     val logTransactions = MutableStateFlow<Boolean>(false)
+@@ -163,4 +164,5 @@ class SettingsModel private constructor(
+     val tosAgreedTo = MutableStateFlow<Boolean>(false)
+     val devMode = MutableStateFlow<Boolean>(false)
+     val bleL2capEnabled = MutableStateFlow<Boolean>(false)
++    val bleL2capInEngagementEnabled = MutableStateFlow<Boolean>(false)
+ }
+diff --git a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/StartScreen.kt b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/StartScreen.kt
+index 1ed079b..c9acca0 100644
+--- a/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/StartScreen.kt
++++ b/composeApp/src/commonMain/kotlin/org/multipaz/identityreader/StartScreen.kt
+@@ -55,6 +55,7 @@ import org.jetbrains.compose.resources.stringResource
+ import org.multipaz.cbor.DataItem
+ import org.multipaz.compose.permissions.rememberBluetoothPermissionState
+ import org.multipaz.mdoc.connectionmethod.MdocConnectionMethodBle
++import org.multipaz.mdoc.nfc.ScanNfcMdocReaderResult
+ import org.multipaz.mdoc.nfc.scanNfcMdocReader
+ import org.multipaz.mdoc.transport.MdocTransport
+ import org.multipaz.mdoc.transport.MdocTransportFactory
+@@ -133,12 +134,7 @@ fun StartScreen(
+     promptModel: PromptModel,
+     mdocTransportOptionsForNfcEngagement: MdocTransportOptions,
+     onScanQrClicked: () -> Unit,
+-    onNfcHandover: suspend (
+-        transport: MdocTransport,
+-        encodedDeviceEngagement: ByteString,
+-        handover: DataItem,
+-        updateMessage: ((message: String) -> Unit)?
+-    ) -> Unit,
++    onNfcHandover: suspend (scanResult: ScanNfcMdocReaderResult) -> Unit,
+     onReaderIdentityClicked: () -> Unit,
+     onTrustedIssuersClicked: () -> Unit,
+     onDeveloperSettingsClicked: () -> Unit,
+@@ -307,12 +303,7 @@ private fun StartScreenWithPermissions(
+     promptModel: PromptModel,
+     mdocTransportOptionsForNfcEngagement: MdocTransportOptions,
+     onScanQrClicked: () -> Unit,
+-    onNfcHandover: suspend (
+-        transport: MdocTransport,
+-        encodedDeviceEngagement: ByteString,
+-        handover: DataItem,
+-        updateMessage: ((message: String) -> Unit)?
+-    ) -> Unit,
++    onNfcHandover: suspend (scanResult: ScanNfcMdocReaderResult) -> Unit,
+     onOpportunisticSignInToGoogle: () -> Unit,
+     onReaderIdentityClicked: () -> Unit
+ ) {
+@@ -342,7 +333,7 @@ private fun StartScreenWithPermissions(
+     LaunchedEffect(Unit) {
+         if (nfcTagScanningSupportedWithoutDialog) {
+             coroutineScope.launch {
+-                scanNfcMdocReader(
++                val scanResult = scanNfcMdocReader(
+                     message = null,
+                     options = mdocTransportOptionsForNfcEngagement,
+                     transportFactory = MdocTransportFactory.Default,
+@@ -355,9 +346,11 @@ private fun StartScreenWithPermissions(
+                             peripheralServerModeUuid = null,
+                             centralClientModeUuid = UUID.randomUUID(),
+                         )
+-                    ),
+-                    onHandover = onNfcHandover
++                    )
+                 )
++                if (scanResult != null) {
++                    onNfcHandover(scanResult)
++                }
+             }
+         }
+     }
+@@ -441,7 +434,7 @@ private fun StartScreenWithPermissions(
+             OutlinedButton(
+                 onClick = {
+                     coroutineScope.launch {
+-                        scanNfcMdocReader(
++                        val scanResult = scanNfcMdocReader(
+                             message = "Hold to Wallet",
+                             options = MdocTransportOptions(bleUseL2CAP = true),
+                             transportFactory = MdocTransportFactory.Default,
+@@ -455,8 +448,10 @@ private fun StartScreenWithPermissions(
+                                     centralClientModeUuid = UUID.randomUUID(),
+                                 )
+                             ),
+-                            onHandover = onNfcHandover
+                         )
++                        if (scanResult != null) {
++                            onNfcHandover(scanResult)
++                        }
+                     }
+                 }
+             ) {
+diff --git a/gradle/libs.versions.toml b/gradle/libs.versions.toml
+index 1c37f77..09948b7 100644
+--- a/gradle/libs.versions.toml
++++ b/gradle/libs.versions.toml
+@@ -13,7 +13,7 @@ kotlinx-io = "0.8.0"
+ kotlinx-datetime = "0.7.1"
+ kotlinx-serialization = "1.9.0"
+ ksp = "2.2.0-2.0.2"
+-multipaz = "0.94.0-pre.15.f80f5dac"
++multipaz = "0.94.0"
+ ktor = "2.3.13"
+ logback = "1.5.18"
+ hsqldb = "2.7.4"
+-- 
+2.51.0.551.gc4e3cb9517-goog
+

@@ -22,7 +22,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import kotlinx.io.bytestring.ByteString
 import org.multipaz.cbor.Cbor
 import org.multipaz.cbor.Simple
@@ -30,7 +29,6 @@ import org.multipaz.compose.prompt.PromptDialogs
 import org.multipaz.documenttype.DocumentTypeRepository
 import org.multipaz.documenttype.knowntypes.DrivingLicense
 import org.multipaz.mdoc.transport.MdocTransportOptions
-import org.multipaz.mdoc.transport.NfcTransportMdocReader
 import org.multipaz.trustmanagement.CompositeTrustManager
 import org.multipaz.trustmanagement.TrustEntryVical
 import org.multipaz.trustmanagement.TrustEntryX509Cert
@@ -42,7 +40,6 @@ import org.multipaz.util.fromBase64Url
 import org.multipaz.util.toBase64Url
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
-import kotlin.time.Duration.Companion.seconds
 
 data class UrlLaunchData(
     val url: String,
@@ -132,7 +129,7 @@ class App(
                 readerBackendUrl = BuildConfig.IDENTITY_READER_BACKEND_URL,
                 //readerBackendUrl = "http://127.0.0.1:8020",
                 storage = Platform.nonBackedUpStorage,
-                httpClientEngineFactory = platformHttpClientEngineFactory(),
+                httpClientEngineFactory = getPlatformUtils().httpClientEngineFactory,
                 secureArea = Platform.getSecureArea(),
                 numKeys = 10,
             )

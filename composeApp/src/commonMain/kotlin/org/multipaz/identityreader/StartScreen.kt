@@ -64,6 +64,7 @@ import org.multipaz.prompt.PromptModel
 import org.multipaz.util.Logger
 import org.multipaz.util.UUID
 import org.multipaz.util.fromHex
+import org.multipaz.util.fromHexByteString
 import org.multipaz.util.toBase64Url
 
 private const val TAG = "StartScreen"
@@ -79,7 +80,7 @@ private suspend fun signIn(
         explicitSignIn = explicitSignIn,
         serverClientId = BuildConfig.IDENTITY_READER_BACKEND_CLIENT_ID,
         nonce = nonce.toByteArray().toBase64Url(),
-        httpClientEngineFactory = platformHttpClientEngineFactory(),
+        httpClientEngineFactory = getPlatformUtils().httpClientEngineFactory,
     )
     readerBackendClient.signIn(nonce, googleIdTokenString)
     settingsModel.signedIn.value = signInData
@@ -327,7 +328,7 @@ private fun StartScreenWithPermissions(
 
     val reader = NfcTagReader.getReaders().firstOrNull()
     val nfcScanOptions = NfcScanOptions(
-        pollingFrameData = ByteString("6a0281030000".fromHex())
+        pollingFrameData = "6a0281030000".fromHexByteString()
     )
     // On Platforms that support NFC scanning without a dialog, start scanning as soon
     // as we enter this screen. We'll get canceled when switched away because `coroutineScope`
